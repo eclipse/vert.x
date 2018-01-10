@@ -1349,6 +1349,10 @@ also make sure the relevant Log4J or SLF4J jars are on your classpath.
 Notice that, the provided delegate for Log4J 1 does not support parameterized message. The delegate for Log4J 2
 uses the `{}` syntax like the SLF4J delegate. JUL delegate uses the `{x}` syntax.
 
+As an alternative to setting the system property you may provide a file with the name `vertx-logger-factory.properties` on your
+classpath. This file should contain a single property called `vertx.logger-delegate-factory-class-name` specifying the name of
+the Java class implementing `link:../../apidocs/io/vertx/core/spi/logging/LogDelegateFactory.html[LogDelegateFactory]`.
+
 === Logging from your application
 
 Vert.x itself is just a library and you can use whatever logging library you prefer to log from your own application,
