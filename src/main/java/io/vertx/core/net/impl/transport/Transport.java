@@ -201,7 +201,9 @@ public class Transport {
   public void configure(ClientOptionsBase options, Bootstrap bootstrap) {
     BiConsumer<ChannelOption<Object>, Object> setter = bootstrap::option;
     if (options.getLocalAddress() != null) {
-      bootstrap.localAddress(options.getLocalAddress(), 0);
+      bootstrap.localAddress(options.getLocalAddress(), options.getLocalPort());
+    } else if (options.getLocalPort() != 0) {
+      bootstrap.localAddress(options.getLocalPort());
     }
     bootstrap.option(ChannelOption.TCP_NODELAY, options.isTcpNoDelay());
     if (options.getSendBufferSize() != -1) {

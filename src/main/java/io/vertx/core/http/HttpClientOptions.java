@@ -1029,6 +1029,11 @@ public class HttpClientOptions extends ClientOptionsBase {
   }
 
   @Override
+  public HttpClientOptions setLocalPort(int localPort) {
+    return (HttpClientOptions) super.setLocalPort(localPort);
+  }
+
+  @Override
   public HttpClientOptions setLogActivity(boolean logEnabled) {
     return (HttpClientOptions) super.setLogActivity(logEnabled);
   }
