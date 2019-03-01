@@ -11,9 +11,10 @@
 
 package io.vertx.core.logging;
 
+import static java.util.Objects.requireNonNull;
+
 import io.vertx.core.spi.logging.LogDelegate;
 import io.vertx.core.spi.logging.LogDelegateFactory;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -35,7 +36,7 @@ public class LoggerFactory {
   }
 
   public static synchronized void initialise() {
-    LogDelegateFactory delegateFactory;
+    LogDelegateFactory newDelegateFactory;
 
     // If a system property is specified then this overrides any delegate factory which is set
     // programmatically - this is primarily of use so we can configure the logger delegate on the client side.
@@ -48,18 +49,54 @@ public class LoggerFactory {
     }
 
     if (className != null) {
-      ClassLoader loader = Thread.currentThread().getContextClassLoader();
+      ClassLoader tcccl = Thread.currentThread().getContextClassLoader();
       try {
-        Class<?> clz = loader.loadClass(className);
-        delegateFactory = (LogDelegateFactory) clz.newInstance();
-      } catch (Exception e) {
-        throw new IllegalArgumentException("Error instantiating transformer class \"" + className + "\"", e);
+        newDelegateFactory = loadClass(className, tcccl);
+      } catch (IllegalArgumentException e) {
+        ClassLoader thisClasssLoader = LoggerFactory.class.getClassLoader();
+        newDelegateFactory = loadClass(className, thisClasssLoader);
       }
     } else {
-      delegateFactory = new JULLogDelegateFactory();
+      newDelegateFactory = new JULLogDelegateFactory();
     }
 
-    LoggerFactory.delegateFactory = delegateFactory;
+    LoggerFactory.delegateFactory = newDelegateFactory;
+  }
+
+  private static LogDelegateFactory loadClass(String className, ClassLoader classLoader) {
+    try {
+      Class<?> clz = classLoader.loadClass(className);
+      return (LogDelegateFactory) clz.newInstance();
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Error instantiating LogDelegateFactory implemention: \"" + className + "\"", e);
+    }
+  }
+
+  /**
+   * Set new custom LoggerFactory.
+   * @param factory the new LogDelegateFactory to use
+   */
+  public static synchronized void setLogDelegateFactory(LogDelegateFactory factory) {
+      requireNonNull(factory, "factory == null");
+      LogDelegateFactory current = delegateFactory;
+      if (current != null) {
+          try {
+            getLogger(LoggerFactory.class).debug("Replacing LogDelegateFactory " + current + " by " + factory);
+          } catch (Throwable t) {
+            factory.createDelegate(LoggerFactory.class.getCanonicalName())
+                .error("Failed to log LogDelegateFactory replacement on previous implementation", t);
+          }
+          loggers.clear();
+      }
+      delegateFactory = factory;
+  }
+
+  /**
+   * Get current LoggerFactory.
+   * @return the currently used LogDelegateFactory
+   */
+  public static LogDelegateFactory getLogDelegateFactory() {
+      return delegateFactory;
   }
 
   /**
