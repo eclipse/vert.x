@@ -16,12 +16,15 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Context;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.eventbus.impl.clustered.ClusteredMessage;
+import io.vertx.core.eventbus.impl.codecs.GenericMessageCodec;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.test.core.TestUtils;
 import io.vertx.test.core.VertxTestBase;
 import org.junit.Test;
 
+import java.io.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
@@ -628,6 +631,32 @@ public abstract class EventBusTestBase extends VertxTestBase {
     }
   }
 
+  public static class MySerializablePOJO implements Serializable {
+    private String str;
+
+    public MySerializablePOJO(String str) {
+      this.str = str;
+    }
+
+    public String getStr() {
+      return str;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      MySerializablePOJO myPOJO = (MySerializablePOJO) o;
+      if (str != null ? !str.equals(myPOJO.str) : myPOJO.str != null) return false;
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return str != null ? str.hashCode() : 0;
+    }
+  }
+
   public static class MyReplyException extends ReplyException {
 
     public MyReplyException(int failureCode, String message) {
@@ -705,6 +734,52 @@ public abstract class EventBusTestBase extends VertxTestBase {
     @Override
     public String name() {
       return getClass().getName();
+    }
+
+    @Override
+    public byte systemCodecID() {
+      return -1;
+    }
+  }
+
+  public static class MyGenericMessageCodec<V, T> implements MessageCodec<V, T> {
+
+    @Override
+    public void encodeToWire(Buffer buffer, V v) {
+      final ByteArrayOutputStream outputStream = new ByteArrayOutputStream(ClusteredMessage.ENCODE_TOWIRE_LENGTH);
+      try (ObjectOutputStream object = new ObjectOutputStream(outputStream)) {
+        object.writeObject(v);
+      } catch (final IOException ex) {
+        throw new IllegalArgumentException("Error to encode message using a generic codec. It must implement serializable interface.", ex);
+      }
+      byte[] bytes = outputStream.toByteArray();
+      buffer.appendInt(bytes.length);
+      buffer.appendBytes(bytes);
+    }
+
+    @Override
+    public T decodeFromWire(int pos, Buffer buffer) {
+      int length = buffer.getInt(pos);
+      pos += 4;
+      byte[] bytes = buffer.getBytes(pos, pos + length);
+      T object = null;
+      ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+      try (ObjectInputStream in = new ObjectInputStream(inputStream)) {
+        object = (T) in.readObject();
+      } catch (final ClassNotFoundException | IOException ex) {
+        throw new IllegalArgumentException("Error to decode message using a generic codec");
+      }
+      return object;
+    }
+
+    @Override
+    public T transform(V v) {
+      return (T)v;
+    }
+
+    @Override
+    public String name() {
+      return "my-generic";
     }
 
     @Override

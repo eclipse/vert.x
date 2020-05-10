@@ -13,6 +13,7 @@ package io.vertx.core.eventbus;
 
 import io.vertx.core.*;
 import io.vertx.core.eventbus.impl.MessageConsumerImpl;
+import io.vertx.core.eventbus.impl.codecs.GenericMessageCodec;
 import io.vertx.core.impl.ConcurrentHashSet;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.impl.EventLoopContext;
@@ -859,6 +860,28 @@ public class LocalEventBusTest extends EventBusTestBase {
   }
 
   @Test
+  public void testGenericDecoderSendAsymmetric() throws Exception {
+    eb.enableGenericCodec();
+    testSend(eb, eb, null, null);
+    eb.disableGenericCodec();
+  }
+
+  @Test
+  public void testMyGenericDecoderSendAsymmetric() throws Exception {
+    eb.enableGenericCodec();
+    eb.registerDefaultCodec(GenericMessageCodec.class, new MyGenericMessageCodec());
+    StringBuilder ping = new StringBuilder();
+    ping.append("ping");
+    testSend(ping, ping, null, null);
+    eb.disableGenericCodec();
+  }
+
+  @Test
+  public void testDesabledGenericDecoderSend() throws Exception {
+    assertIllegalArgumentException(() -> testSend(eb, eb, null, null));
+  }
+
+  @Test
   public void testDefaultDecoderReplyAsymmetric() throws Exception {
     MessageCodec codec = new MyPOJOEncoder1();
     vertx.eventBus().registerDefaultCodec(MyPOJO.class, codec);
@@ -882,6 +905,23 @@ public class LocalEventBusTest extends EventBusTestBase {
     String str = TestUtils.randomAlphaString(100);
     MyPOJO pojo = new MyPOJO(str);
     testReply(pojo, pojo, null, null);
+  }
+
+  @Test
+  public void testGenericDecoderReplySymetric() throws Exception {
+    eb.enableGenericCodec();
+    testReply(eb, eb, null, null);
+    eb.disableGenericCodec();
+  }
+
+  @Test
+  public void testMyGenericDecoderReplySymetric() throws Exception {
+    eb.enableGenericCodec();
+    eb.registerDefaultCodec(GenericMessageCodec.class, new MyGenericMessageCodec());
+    StringBuilder ping = new StringBuilder();
+    ping.append("ping");
+    testReply(ping, ping, null, null);
+    eb.disableGenericCodec();
   }
 
   @Test
