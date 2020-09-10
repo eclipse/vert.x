@@ -19,13 +19,15 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Enumeration;
-import java.util.UUID;
 import java.util.function.IntPredicate;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -92,7 +94,7 @@ public class FileResolver {
   private Thread shutdownHook;
   private final boolean enableCaching;
   private final boolean enableCpResolving;
-  private final String fileCacheDir;
+  private final String cacheDirBaseName;
 
   public FileResolver() {
     this(new FileSystemOptions());
@@ -101,7 +103,7 @@ public class FileResolver {
   public FileResolver(FileSystemOptions fileSystemOptions) {
     this.enableCaching = fileSystemOptions.isFileCachingEnabled();
     this.enableCpResolving = fileSystemOptions.isClassPathResolvingEnabled();
-    this.fileCacheDir = fileSystemOptions.getFileCacheDir();
+    this.cacheDirBaseName = fileSystemOptions.getFileCacheDir();
 
     String cwdOverride = System.getProperty("vertx.cwd");
     if (cwdOverride != null) {
@@ -110,7 +112,7 @@ public class FileResolver {
       cwd = null;
     }
     if (this.enableCpResolving) {
-      setupCacheDir(UUID.randomUUID().toString());
+      setupCacheDir();
     }
   }
 
@@ -375,11 +377,24 @@ public class FileResolver {
     return cl;
   }
 
-  private synchronized void setupCacheDir(String id) {
-    String cacheDirName = fileCacheDir + "/file-cache-" + id;
-    cacheDir = new File(cacheDirName);
-    if (!cacheDir.mkdirs()) {
-      throw new IllegalStateException("Failed to create cache dir: " + cacheDirName);
+  /**
+   * @return file attributes that allow owner access only, or no file attributes
+   *            if file system of {@code path} doesn't support posix file attributes
+   */
+  private FileAttribute<?> [] ownerPermissions(Path path) {
+    return path.getFileSystem().supportedFileAttributeViews().contains("posix")
+        ? new FileAttribute[] { PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")) }
+        : new FileAttribute[] {};
+  }
+
+  private synchronized void setupCacheDir() {
+    try {
+      Path cacheDirBase = new File(cacheDirBaseName).toPath();
+      FileAttribute<?> [] ownerPermissions = ownerPermissions(cacheDirBase);
+      Files.createDirectories(cacheDirBase, ownerPermissions);
+      cacheDir = Files.createTempDirectory(cacheDirBase, "vertx-cache-", ownerPermissions).toFile();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e.getMessage() + ": " + cacheDirBaseName, e);
     }
     // Add shutdown hook to delete on exit
     shutdownHook = new Thread(() -> {
