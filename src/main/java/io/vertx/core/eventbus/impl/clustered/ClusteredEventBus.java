@@ -145,7 +145,7 @@ public class ClusteredEventBus extends EventBusImpl {
   }
 
   @Override
-  protected <T> void removeRegistration(HandlerHolder<T> handlerHolder, Promise<Void> completionHandler) {
+  protected <T> void onLocalUnregistration(HandlerHolder<T> handlerHolder, Promise<Void> completionHandler) {
     if (!handlerHolder.isReplyHandler()) {
       RegistrationInfo registrationInfo = new RegistrationInfo(
         nodeId,
@@ -159,7 +159,7 @@ public class ClusteredEventBus extends EventBusImpl {
       } else {
         promise.future().onFailure(t -> log.error("Failed to remove sub", t));
       }
-    } else {
+    } else if (completionHandler != null) {
       completionHandler.complete();
     }
   }
