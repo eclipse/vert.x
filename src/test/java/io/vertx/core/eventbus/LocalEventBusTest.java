@@ -18,7 +18,6 @@ import io.vertx.core.impl.ConcurrentHashSet;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.impl.EventLoopContext;
 import io.vertx.core.impl.VertxInternal;
-import io.vertx.core.streams.Pump;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.test.core.TestUtils;
 import org.junit.Test;
@@ -1477,6 +1476,59 @@ public class LocalEventBusTest extends EventBusTestBase {
   public void testCloseSender() {
     MessageProducer<String> producer = eb.sender(ADDRESS1);
     producer.close(onSuccess(v -> testComplete()));
+    await();
+  }
+
+  @Test
+  public void testEarlyTimeoutWhenMaxBufferedMessagesExceeded() {
+    testEarlyTimeout(
+      consumer -> {
+        consumer.pause();
+        consumer.setMaxBufferedMessages(0);
+      },
+      consumer -> {});
+  }
+
+  @Test
+  public void testEarlyTimeoutWhenSetMaxBufferedMessages() {
+    testEarlyTimeout(
+      MessageConsumer::pause,
+      consumer -> vertx.setTimer(1000, id -> {
+        // Give some time to the event bus to deliver the message to the consumer
+        consumer.setMaxBufferedMessages(0);
+      }));
+  }
+
+  @Test
+  public void testEarlyTimeoutOnHandlerUnregistration() {
+    testEarlyTimeout(
+      consumer -> {},
+      MessageConsumer::unregister);
+  }
+
+  @Test
+  public void testEarlyTimeoutOfBufferedMessagesOnHandlerUnregistration() {
+    testEarlyTimeout(
+      MessageConsumer::pause,
+      consumer -> vertx.setTimer(1000, id -> {
+        // Give some time to the event bus to deliver the message to the consumer
+        consumer.unregister();
+      }));
+  }
+
+  private void testEarlyTimeout(Consumer<MessageConsumer<?>> beforeRequest, Consumer<MessageConsumer<?>> afterRequest) {
+    DeliveryOptions noTimeout = new DeliveryOptions().setSendTimeout(Long.MAX_VALUE);
+    MessageConsumer<?> consumer = vertx.eventBus().consumer(ADDRESS1);
+    consumer.handler(message -> message.reply(null));
+    consumer.completionHandler(__ -> {
+      beforeRequest.accept(consumer);
+      vertx.eventBus().request(ADDRESS1, null, noTimeout, onFailure(err -> {
+        assertTrue(err instanceof ReplyException);
+        assertEquals(ReplyFailure.TIMEOUT, ((ReplyException) err).failureType());
+        testComplete();
+      }));
+      afterRequest.accept(consumer);
+    });
     await();
   }
 }
